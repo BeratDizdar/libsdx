@@ -2,12 +2,17 @@
 #include<d3d9.h>
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-// https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-beginstateblock
+#include "vendor/stb_image.h"
+#include <stdarg.h>
 
-void* sdx_CreateID3D9(){return Direct3DCreate9(D3D_SDK_VERSION);}
-void* sdx_CreateID3DDevice9(void* d3d9, void* hwnd){
-    IDirect3DDevice9* device;
+//---------------------------------------------------------------------
+//
+// Create Functions
+//
+//---------------------------------------------------------------------
+
+void sdx_CreateContext(void** d3d9){*d3d9 = Direct3DCreate9(D3D_SDK_VERSION);}
+void sdx_CreateDevice(void* d3d9, void* hwnd, void** device){
     D3DPRESENT_PARAMETERS pp = {0};
     pp.Windowed = TRUE;
     pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
@@ -16,87 +21,208 @@ void* sdx_CreateID3DDevice9(void* d3d9, void* hwnd){
     ((IDirect3D9*)d3d9)->lpVtbl->CreateDevice(((IDirect3D9*)d3d9),
         D3DADAPTER_DEFAULT,D3DDEVTYPE_HAL,hwnd,
         D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_PUREDEVICE,
-        &pp,&device);
-    return device;
+        &pp,(IDirect3DDevice9**)device
+    );
 }
-void *sdx_CreateID3DVertexBuffer9(void* device, int size, void* data, unsigned int FVF, unsigned int managed){
+void sdx_CreateVertexBuffer(void* device, int size, void* data, unsigned int FVF, unsigned int managed, void** vb) {
     DWORD pool = (managed)? D3DPOOL_MANAGED: D3DPOOL_DEFAULT;
-    DWORD usage = (!managed)? D3DUSAGE_DYNAMIC|D3DUSAGE_WRITEONLY: 0;
-    IDirect3DVertexBuffer9* vertex;
-    ((IDirect3DDevice9*)device)->lpVtbl->CreateVertexBuffer(((IDirect3DDevice9*)device), size, usage, FVF, pool, &vertex, NULL);
-    if (data) {
+    DWORD usage = (!managed)? D3DUSAGE_DYNAMIC|D3DUSAGE_WRITEONLY: 0;    
+    ((IDirect3DDevice9*)device)->lpVtbl->CreateVertexBuffer(((IDirect3DDevice9*)device), size, usage, FVF, pool, (IDirect3DVertexBuffer9**)vb, NULL);
+
+    if (*vb && data) {
         void* v;
         DWORD lock_flag = (!managed) ? D3DLOCK_DISCARD : 0;
-        vertex->lpVtbl->Lock(vertex, 0, 0, (void**)&v, 0);
+        ((IDirect3DVertexBuffer9*)(*vb))->lpVtbl->Lock(((IDirect3DVertexBuffer9*)(*vb)), 0, 0, (void**)&v, lock_flag);
         memcpy(v, data, size);
-        vertex->lpVtbl->Unlock(vertex);
+        ((IDirect3DVertexBuffer9*)(*vb))->lpVtbl->Unlock(((IDirect3DVertexBuffer9*)(*vb)));
     }
-    return vertex;
 }
-void *sdx_CreateID3DIndexBuffer9(void* device, int size, void* data, unsigned int managed){
+
+void sdx_CreateIndexBuffer(void* device, int size, void* data, unsigned int managed, void** ib) {
     DWORD pool = (managed)? D3DPOOL_MANAGED: D3DPOOL_DEFAULT;
     DWORD usage = (!managed)? D3DUSAGE_DYNAMIC|D3DUSAGE_WRITEONLY: 0;
-    IDirect3DIndexBuffer9* index;
-    ((IDirect3DDevice9*)device)->lpVtbl->CreateIndexBuffer(((IDirect3DDevice9*)device), size, usage, D3DFMT_INDEX16, pool, &index, NULL);
-    if (data) {
+    ((IDirect3DDevice9*)device)->lpVtbl->CreateIndexBuffer(((IDirect3DDevice9*)device), size, usage, D3DFMT_INDEX16, pool, (IDirect3DIndexBuffer9**)ib, NULL);
+    
+    if (*ib && data) {
         void* i;
         DWORD lock_flag = (!managed) ? D3DLOCK_DISCARD : 0;
-        index->lpVtbl->Lock(index, 0, 0, (void**)&i, lock_flag);
+        ((IDirect3DIndexBuffer9*)(*ib))->lpVtbl->Lock(((IDirect3DIndexBuffer9*)(*ib)), 0, 0, (void**)&i, lock_flag);
         memcpy(i, data, size);
-        index->lpVtbl->Unlock(index);
+        ((IDirect3DIndexBuffer9*)(*ib))->lpVtbl->Unlock(((IDirect3DIndexBuffer9*)(*ib)));
     }
-    return index;
 }
-void* sdx_CreateID3DTexture9FromPath(void* device, const char* filepath) {
+
+void sdx_CreateTextureFromPath(void* device, const char* filepath, void** tex) {
     int width, height, channels;
     unsigned char *img = stbi_load(filepath, &width, &height, &channels, 4);
-    if (!img) return NULL;
+    if (!img) { *tex = NULL; return; }
 
-    IDirect3DTexture9* tex;
     ((IDirect3DDevice9*)device)->lpVtbl->CreateTexture(((IDirect3DDevice9*)device), 
-        width, height, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &tex, NULL);
-    D3DLOCKED_RECT rect;
-    tex->lpVtbl->LockRect(tex, 0, &rect, NULL, 0);
-
-    unsigned char* dest = (unsigned char*)rect.pBits;
-    for (int y = 0; y < height; ++y) {
-        unsigned char* src_row = img + (y * width * 4);
-        unsigned char* dst_row = dest + (y * rect.Pitch);
-        
-        for (int x = 0; x < width; ++x) {
-            dst_row[x*4 + 0] = src_row[x*4 + 2]; // Blue  <- Red
-            dst_row[x*4 + 1] = src_row[x*4 + 1]; // Green <- Green
-            dst_row[x*4 + 2] = src_row[x*4 + 0]; // Red   <- Blue
-            dst_row[x*4 + 3] = src_row[x*4 + 3]; // Alpha <- Alpha
+        width, height, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, (IDirect3DTexture9**)tex, NULL);
+    if (*tex) {
+        D3DLOCKED_RECT rect;
+        ((IDirect3DTexture9*)(*tex))->lpVtbl->LockRect(((IDirect3DTexture9*)(*tex)), 0, &rect, NULL, 0);
+        unsigned char* dest = (unsigned char*)rect.pBits;
+        for (int y = 0; y < height; ++y) {
+            unsigned char* src_row = img + (y * width * 4);
+            unsigned char* dst_row = dest + (y * rect.Pitch);
+            
+            for (int x = 0; x < width; ++x) {
+                dst_row[x*4 + 0] = src_row[x*4 + 2];
+                dst_row[x*4 + 1] = src_row[x*4 + 1];
+                dst_row[x*4 + 2] = src_row[x*4 + 0];
+                dst_row[x*4 + 3] = src_row[x*4 + 3];
+            }
         }
-    }
-    tex->lpVtbl->UnlockRect(tex, 0);
+        ((IDirect3DTexture9*)(*tex))->lpVtbl->UnlockRect(((IDirect3DTexture9*)(*tex)), 0);
+    }   
     stbi_image_free(img);
-
-    return tex;
 }
-void* sdx_CreateRenderTargetTexture(void* device, int width, int height) {
-    IDirect3DTexture9* tex = NULL;
+void sdx_CreateRenderTargetTexture(void* device, int width, int height, void** tex) {
     ((IDirect3DDevice9*)device)->lpVtbl->CreateTexture(
         ((IDirect3DDevice9*)device),
         width, height, 1, 
         D3DUSAGE_RENDERTARGET, 
         D3DFMT_A8R8G8B8, 
         D3DPOOL_DEFAULT, 
-        &tex, NULL
+        (IDirect3DTexture9**)tex, NULL
     );
-    return (void*)tex;
 }
-void* sdx_CreateID3DVertexDeclaration9(void* device, const void* elements) {
-    IDirect3DVertexDeclaration9* decl = NULL;
+void sdx_CreateVertexDeclaration(void* device, const int* layout, void** decl) {
+    D3DVERTEXELEMENT9 d3d_elements[32]; // maks 32 yaptım şimdilik
+    short offset = 0;
+    int i = 0;
+
+    while (layout[i] != SDX_LAYOUT_END) {
+        d3d_elements[i].Stream = 0;
+        d3d_elements[i].Offset = offset;
+        d3d_elements[i].Method = D3DDECLMETHOD_DEFAULT;
+        d3d_elements[i].UsageIndex = 0;
+
+        switch (layout[i]) {
+            case SDX_LAYOUT_POS3:
+                d3d_elements[i].Type = D3DDECLTYPE_FLOAT3;
+                d3d_elements[i].Usage = D3DDECLUSAGE_POSITION;
+                offset += 12;
+                break;
+            case SDX_LAYOUT_POS2:
+                d3d_elements[i].Type = D3DDECLTYPE_FLOAT2;
+                d3d_elements[i].Usage = D3DDECLUSAGE_POSITION;
+                offset += 8;
+                break;
+            case SDX_LAYOUT_NORM3:
+                d3d_elements[i].Type = D3DDECLTYPE_FLOAT3;
+                d3d_elements[i].Usage = D3DDECLUSAGE_NORMAL;
+                offset += 12;
+                break;
+            case SDX_LAYOUT_COLOR4:
+                d3d_elements[i].Type = D3DDECLTYPE_D3DCOLOR;
+                d3d_elements[i].Usage = D3DDECLUSAGE_COLOR;
+                offset += 4;
+                break;
+            case SDX_LAYOUT_UV2:
+                d3d_elements[i].Type = D3DDECLTYPE_FLOAT2;
+                d3d_elements[i].Usage = D3DDECLUSAGE_TEXCOORD;
+                offset += 8;
+                break;
+        }i++;
+    }
+    d3d_elements[i].Stream = 0xFF; 
+    d3d_elements[i].Offset = 0;
+    d3d_elements[i].Type = D3DDECLTYPE_UNUSED;
+    d3d_elements[i].Method = 0;
+    d3d_elements[i].Usage = 0;
+    d3d_elements[i].UsageIndex = 0;
     ((IDirect3DDevice9*)device)->lpVtbl->CreateVertexDeclaration(
         ((IDirect3DDevice9*)device), 
-        (const D3DVERTEXELEMENT9*)elements, 
-        &decl
+        (const D3DVERTEXELEMENT9*)d3d_elements, 
+        (IDirect3DVertexDeclaration9**)decl
     );
-    return decl;
 }
-void sdx_BeginStateBlock(void* device) {
+void sdx_CreateVertexShader(void *device, unsigned long *data, void **shader) {
+    HRESULT hr=((IDirect3DDevice9*)device)->lpVtbl->CreateVertexShader((IDirect3DDevice9*)device, data, shader);
+    if (FAILED(hr)) {
+        printf("BINGO! D3D9 bu Bytecode'u reddetti!\n");
+    }
+}
+
+void sdx_CreatePixelShader(void *device, unsigned long *data, void **shader) {
+    HRESULT hr=((IDirect3DDevice9*)device)->lpVtbl->CreatePixelShader((IDirect3DDevice9*)device, data, shader);
+    if (FAILED(hr)) {
+        printf("BINGO! D3D9 bu Bytecode'u reddetti!\n");
+    }
+}
+
+//---------------------------------------------------------------------
+//
+// RELEASE
+//
+//---------------------------------------------------------------------
+
+void sdx_ReleaseArgs(void* first_obj, ...) {
+    va_list ap;
+    va_start(ap, first_obj);
+    for (void* obj = first_obj; obj != NULL; obj = va_arg(ap, void*)) {
+        IUnknown* com_obj = (IUnknown*)obj;
+        com_obj->lpVtbl->Release(com_obj);
+    }
+    va_end(ap);
+}
+
+//---------------------------------------------------------------------
+//
+// State Functions
+//
+//---------------------------------------------------------------------
+
+void sdx_SetOrtho(void* device, int shader_register, float width, float height) {
+    float mat[16] = {
+        2.0f / width,  0.0f,          0.0f, -1.0f,
+        0.0f,         -2.0f / height, 0.0f,  1.0f,
+        0.0f,          0.0f,          1.0f,  0.0f,
+        0.0f,          0.0f,          0.0f,  1.0f
+    };
+    sdx_SetVertexShaderConstantF(device, shader_register, mat, 4);
+}
+void sdx_SetVertexShaderConstantF(void *device, int start, const float *data, int count) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetVertexShaderConstantF(device, start, data, count);
+}
+void sdx_SetPixelShaderConstantF(void *device, int start, const float *data, int count) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetPixelShaderConstantF(device, start, data, count);
+}
+void sdx_SetViewport(void* device, int x, int y, int width, int height) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetViewport(device, &(D3DVIEWPORT9){x,y,width,height,0,1});
+}
+void sdx_SetScissorRect(void* device, int left, int top, int right, int bottom) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetScissorRect(device, &(RECT){left, top, right, bottom});
+}
+void sdx_SetRenderState(void *device, unsigned int state, unsigned int value) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetRenderState(device, state, value);
+}
+void sdx_SetRenderTarget(void *device, int index, void *surface) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetRenderTarget(device, index, surface);
+}
+void sdx_SetSamplerFilter(void *device, int sampler, int mag, int min, int mip) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetSamplerState(device, sampler, D3DSAMP_MAGFILTER, mag);
+    ((IDirect3DDevice9*)device)->lpVtbl->SetSamplerState(device, sampler, D3DSAMP_MINFILTER, min);
+    ((IDirect3DDevice9*)device)->lpVtbl->SetSamplerState(device, sampler, D3DSAMP_MIPFILTER, mip);
+}
+void sdx_SetTexture(void *device, int stage, void *tex) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetTexture((IDirect3DDevice9*)device, stage, tex);
+}
+void sdx_SetVertexShader(void *device, void *shader) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetVertexShader((IDirect3DDevice9*)device, shader);
+}
+void sdx_SetPixelShader(void *device, void *shader) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetPixelShader((IDirect3DDevice9*)device, shader);
+}
+void sdx_SetVertexDeclaration(void *device, void *decl) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetVertexDeclaration((IDirect3DDevice9*)device, decl);
+}
+void sdx_SetStreamSource(void *device, int stream, void *vbuf, int offset, int stride) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetStreamSource(device, stream, vbuf, offset, stride);
+}
+void sdx_BeginStateBlock(void *device) {
     ((IDirect3DDevice9*)device)->lpVtbl->BeginStateBlock(device);
 }
 void sdx_EndStateBlock(void* device, void** state_block) {
@@ -104,4 +230,65 @@ void sdx_EndStateBlock(void* device, void** state_block) {
 }
 void sdx_Apply(void* state_block) {
     ((IDirect3DStateBlock9*)state_block)->lpVtbl->Apply(state_block);
+}
+
+//---------------------------------------------------------------------
+//
+// Reference Functions
+//
+//---------------------------------------------------------------------
+
+void sdx_GetRenderTarget(void* device, int index, void** surface) {
+    ((IDirect3DDevice9*)device)->lpVtbl->GetRenderTarget(device, index, surface);
+}
+void sdx_GetSurfaceLevel(void* texture, int level, void** surface) {
+    ((IDirect3DTexture9*)texture)->lpVtbl->GetSurfaceLevel(texture, level, surface);
+}
+
+//---------------------------------------------------------------------
+//
+// Memory Functions
+//
+//---------------------------------------------------------------------
+
+void sdx_UpdateVertexBuffer(void* vb, int size, int offset, const void* data) {
+    if (!vb || !data) return;
+    
+    void* pVoid;
+    ((IDirect3DVertexBuffer9*)vb)->lpVtbl->Lock(((IDirect3DVertexBuffer9*)vb), offset, size, (void**)&pVoid, D3DLOCK_DISCARD);
+    memcpy(pVoid, data, size);
+    ((IDirect3DVertexBuffer9*)vb)->lpVtbl->Unlock(((IDirect3DVertexBuffer9*)vb));
+}
+void sdx_UpdateIndexBuffer(void* ib, int size, int offset, const void* data) {
+    if (!ib || !data) return;
+    
+    void* pVoid;
+    ((IDirect3DIndexBuffer9*)ib)->lpVtbl->Lock(((IDirect3DIndexBuffer9*)ib), offset, size, (void**)&pVoid, D3DLOCK_DISCARD);
+    memcpy(pVoid, data, size);
+    ((IDirect3DIndexBuffer9*)ib)->lpVtbl->Unlock(((IDirect3DIndexBuffer9*)ib));
+}
+
+//---------------------------------------------------------------------
+//
+// Surface Functions
+//
+//---------------------------------------------------------------------
+
+void sdx_ClearTarget(void *device, unsigned int color, float z) {
+    ((IDirect3DDevice9*)device)->lpVtbl->Clear((IDirect3DDevice9*)device, 0, NULL, D3DCLEAR_TARGET, color, z, 0);
+}
+void sdx_DrawPrimitive(void *device, int type, int start, int count) {
+    ((IDirect3DDevice9*)device)->lpVtbl->DrawPrimitive(device, type, start, count);
+}
+void sdx_Present(void* device) {
+    ((IDirect3DDevice9*)device)->lpVtbl->Present(device, NULL, NULL, NULL, NULL);
+}
+void sdx_BeginScene(void *device) {
+    ((IDirect3DDevice9*)device)->lpVtbl->BeginScene(device);
+}
+void sdx_EndScene(void *device) {
+    ((IDirect3DDevice9*)device)->lpVtbl->EndScene(device);
+}
+void sdx_SetFVF(void *device, int FVF) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetFVF(device, FVF);
 }
