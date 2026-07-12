@@ -1,99 +1,82 @@
 ```c
-#include "swl.h"
-#include "sdx.h"
-#include <d3d9.h>
+// shader.hlsl
+// fxc.exe /T vs_2_0 /E VS /Fh vs.h shader.hlsl
+// fxc.exe /T ps_2_0 /E PS /Fh ps.h shader.hlsl
+float4x4 orthoMat : register(c0);
+sampler2D tex0 : register(s0);
 
-#include "vs_bytecode.h"
-#include "ps_bytecode.h"
-
-typedef struct { float x, y, z; float nx, ny, nz; unsigned long color; float u, v; } Vertex;
-
-D3DVERTEXELEMENT9 vertex_elements[] = {
-    {0, 0,  D3DDECLTYPE_FLOAT3,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITION, 0}, // x, y, z
-    {0, 12, D3DDECLTYPE_FLOAT3,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_NORMAL,   0}, // nx, ny, nz
-    {0, 24, D3DDECLTYPE_D3DCOLOR, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_COLOR,    0}, // color
-    {0, 28, D3DDECLTYPE_FLOAT2,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 0}, // u, v
-    D3DDECL_END()
+struct VOut {
+    float4 pos : POSITION;
+    float2 uv : TEXCOORD0;
 };
 
-Vertex v_data[] = {
-    { -0.5f,  0.5f, 0.5f,  0.0f, 0.0f, -1.0f,  0xFFFFFFFF,  0.0f, 0.0f },
-    {  0.5f,  0.5f, 0.5f,  0.0f, 0.0f, -1.0f,  0xFFFFFFFF,  1.0f, 0.0f },
-    {  0.5f, -0.5f, 0.5f,  0.0f, 0.0f, -1.0f,  0xFFFFFFFF,  1.0f, 1.0f },
-    { -0.5f, -0.5f, 0.5f,  0.0f, 0.0f, -1.0f,  0xFFFFFFFF,  0.0f, 1.0f },
+VOut VS(float2 pos : POSITION, float2 uv : TEXCOORD0) {
+    VOut Out;
+    Out.pos = mul(float4(pos, 0.0f, 1.0f), orthoMat);
+    Out.uv = uv;
+    return Out;
+}
+
+float4 PS(VOut In) : COLOR {
+    return tex2D(tex0, In.uv);
+}
+
+// ##################################################################
+
+// sdx.h
+#pragma once
+
+enum { // vertex declaration layout
+    SDX_LAYOUT_END = 0,
+    SDX_LAYOUT_POS2,
+    SDX_LAYOUT_POS3,
+    SDX_LAYOUT_COLOR4,
+    SDX_LAYOUT_NORM3,
+    SDX_LAYOUT_UV2,
 };
-unsigned short i_data[] = { 0, 1, 2, 0, 2, 3 };
 
-IDirect3D9* gobj;
-IDirect3DDevice9* device;
-IDirect3DVertexBuffer9* v_buffer;
-IDirect3DIndexBuffer9* i_buffer;
-IDirect3DTexture9* my_tex;
-IDirect3DVertexShader9* v_shader;
-IDirect3DPixelShader9* p_shader;
-IDirect3DVertexDeclaration9* v_decl;
-IDirect3DStateBlock9* state;
+void sdx_CreateContext(void** ctx);
+void sdx_CreateDevice(void* ctx, void* hwnd, void** device);
+void sdx_CreateVertexBuffer(void* device, int size, void* data, unsigned int FVF, unsigned int managed, void** vb);
+void sdx_CreateIndexBuffer(void* device, int size, void* data, unsigned int managed, void** ib);
+void sdx_CreateTextureFromPath(void* device, const char* filepath, void** tex);
+void sdx_CreateRenderTargetTexture(void* device, int width, int height, void** tex);
+void sdx_CreateVertexDeclaration(void* device, const int* layout, void** decl);
+void sdx_CreateVertexShader(void* device, unsigned long* data, void** shader);
+void sdx_CreatePixelShader(void* device, unsigned long* data, void** shader);
 
-float acc, tick = 1.0f/35.0f;
+void sdx_ReleaseArgs(void* obj, ...); // put NULL at ending
 
-int loop(float dt) {
-    if (swl_IsKeyDown(27)) swl_SendQuitEvent();
+// do not use with state block
+void sdx_SetOrtho(void* device, int shader_register, float width, float height);
+// ---------------------------
 
-    acc += dt;
-    for (; acc >= tick;) { // 35 FPS
+void sdx_SetVertexShaderConstantF(void* device, int start, const float* data, int count);
+void sdx_SetPixelShaderConstantF(void* device, int start, const float* data, int count);
+void sdx_SetViewport(void* device, int x, int y, int width, int height);
+void sdx_SetScissorRect(void* device, int left, int top, int right, int bottom);
+void sdx_SetRenderState(void* device, unsigned int state, unsigned int value);
+void sdx_SetRenderTarget(void* device, int index, void* surface);
+void sdx_SetSamplerFilter(void* device, int sampler, int mag, int min, int mip);
+void sdx_SetTexture(void* device, int stage, void* tex);
+void sdx_SetVertexShader(void* device, void* shader);
+void sdx_SetPixelShader(void* device, void* shader);
+void sdx_SetVertexDeclaration(void* device, void* decl);
+void sdx_SetStreamSource(void* device, int stream, void* vbuf, int offset, int stride);
+void sdx_SetFVF(void* device, int FVF);
+void sdx_BeginStateBlock(void* device);
+void sdx_EndStateBlock(void* device, void** state_block);
+void sdx_Apply(void* state_block);
 
-        device->lpVtbl->Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xFF202020, 1.0f, 0);
-        device->lpVtbl->BeginScene(device);
+void sdx_GetRenderTarget(void* device, int index, void** surface);
+void sdx_GetSurfaceLevel(void* texture, int level, void** surface);
 
-        sdx_Apply(state);
-        device->lpVtbl->DrawIndexedPrimitive(device, D3DPT_TRIANGLELIST, 0, 0, 4, 0, 2);
+void sdx_UpdateVertexBuffer(void* vb, int size, int offset, const void* data);
+void sdx_UpdateIndexBuffer(void* ib, int size, int offset, const void* data);
 
-        device->lpVtbl->EndScene(device);
-        device->lpVtbl->Present(device, NULL, NULL, NULL, NULL);
-        
-        acc -= tick;
-    }
-    return 0;
-}
-
-int main() {
-    swl_CreateWindow("X", 800, 600);
-    
-    gobj = sdx_CreateID3D9();
-    device = sdx_CreateID3DDevice9(gobj, swl_GetWindowPtr());
-    device->lpVtbl->SetRenderState(device, D3DRS_SPECULARENABLE, 0);
-    device->lpVtbl->SetRenderState(device, D3DRS_ALPHABLENDENABLE, TRUE);
-    device->lpVtbl->CreateVertexShader(device, (DWORD*)g_vs20_VS_Main, &v_shader);
-    device->lpVtbl->CreatePixelShader(device, (DWORD*)g_ps20_PS_Main, &p_shader);
-    device->lpVtbl->CreateVertexDeclaration(device, vertex_elements, &v_decl);
-    v_buffer = sdx_CreateID3DVertexBuffer9(device, 4*sizeof(Vertex), v_data, 0, 1);
-    i_buffer = sdx_CreateID3DIndexBuffer9(device, 6*sizeof(short), i_data, 1);
-    my_tex = sdx_CreateID3DTexture9FromPath(device, "t.png");
-    device->lpVtbl->SetSamplerState(device, 0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
-    device->lpVtbl->SetSamplerState(device, 0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
-
-    sdx_BeginStateBlock(device);
-        device->lpVtbl->SetVertexShader(device, v_shader);
-        device->lpVtbl->SetPixelShader(device, p_shader);
-        device->lpVtbl->SetTexture(device, 0, (IDirect3DBaseTexture9*)my_tex);
-        device->lpVtbl->SetVertexDeclaration(device, v_decl);
-        device->lpVtbl->SetStreamSource(device, 0, v_buffer, 0, sizeof(Vertex));
-        device->lpVtbl->SetIndices(device, i_buffer);
-    sdx_EndStateBlock(device, &state);
-
-    swl_Mainloop(loop);
-
-    state->lpVtbl->Release(state);
-    my_tex->lpVtbl->Release(my_tex);
-    v_decl->lpVtbl->Release(v_decl);
-    i_buffer->lpVtbl->Release(i_buffer);
-    v_buffer->lpVtbl->Release(v_buffer);
-    p_shader->lpVtbl->Release(p_shader);
-    v_shader->lpVtbl->Release(v_shader);
-    device->lpVtbl->Release(device);
-    gobj->lpVtbl->Release(gobj);
-    
-    swl_CloseWindow();
-    return 0;
-}
+void sdx_ClearTarget(void* device, unsigned int color, float z);
+void sdx_DrawPrimitive(void* device, int type, int start, int count);
+void sdx_Present(void* device);
+void sdx_BeginScene(void* device);
+void sdx_EndScene(void* device);
 ```
