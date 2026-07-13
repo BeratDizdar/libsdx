@@ -1,9 +1,11 @@
-#include "sdx.h"
+#include"sdx.h"
 #include<d3d9.h>
 #define STBI_NO_SIMD
+#define STBI_ONLY_PNG
 #define STB_IMAGE_IMPLEMENTATION
-#include "vendor/stb_image.h"
-#include <stdarg.h>
+#include"depen/stb_image.h"
+#include<stdarg.h>
+#define SDX __declspec(dllexport)
 
 //---------------------------------------------------------------------
 //
@@ -11,8 +13,8 @@
 //
 //---------------------------------------------------------------------
 
-void sdx_CreateContext(void** d3d9){*d3d9 = Direct3DCreate9(D3D_SDK_VERSION);}
-void sdx_CreateDevice(void* d3d9, void* hwnd, void** device){
+SDX void sdx_CreateContext(void** d3d9){*d3d9 = Direct3DCreate9(D3D_SDK_VERSION);}
+SDX void sdx_CreateDevice(void* d3d9, void* hwnd, int pure, void** device){
     D3DPRESENT_PARAMETERS pp = {0};
     pp.Windowed = TRUE;
     pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
@@ -20,11 +22,11 @@ void sdx_CreateDevice(void* d3d9, void* hwnd, void** device){
     pp.hDeviceWindow = hwnd;
     ((IDirect3D9*)d3d9)->lpVtbl->CreateDevice(((IDirect3D9*)d3d9),
         D3DADAPTER_DEFAULT,D3DDEVTYPE_HAL,hwnd,
-        D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_PUREDEVICE,
+        D3DCREATE_HARDWARE_VERTEXPROCESSING | (D3DCREATE_PUREDEVICE*pure),
         &pp,(IDirect3DDevice9**)device
     );
 }
-void sdx_CreateVertexBuffer(void* device, int size, void* data, unsigned int FVF, unsigned int managed, void** vb) {
+SDX void sdx_CreateVertexBuffer(void* device, int size, void* data, unsigned int FVF, unsigned int managed, void** vb) {
     DWORD pool = (managed)? D3DPOOL_MANAGED: D3DPOOL_DEFAULT;
     DWORD usage = (!managed)? D3DUSAGE_DYNAMIC|D3DUSAGE_WRITEONLY: 0;    
     ((IDirect3DDevice9*)device)->lpVtbl->CreateVertexBuffer(((IDirect3DDevice9*)device), size, usage, FVF, pool, (IDirect3DVertexBuffer9**)vb, NULL);
@@ -38,7 +40,7 @@ void sdx_CreateVertexBuffer(void* device, int size, void* data, unsigned int FVF
     }
 }
 
-void sdx_CreateIndexBuffer(void* device, int size, void* data, unsigned int managed, void** ib) {
+SDX void sdx_CreateIndexBuffer(void* device, int size, void* data, unsigned int managed, void** ib) {
     DWORD pool = (managed)? D3DPOOL_MANAGED: D3DPOOL_DEFAULT;
     DWORD usage = (!managed)? D3DUSAGE_DYNAMIC|D3DUSAGE_WRITEONLY: 0;
     ((IDirect3DDevice9*)device)->lpVtbl->CreateIndexBuffer(((IDirect3DDevice9*)device), size, usage, D3DFMT_INDEX16, pool, (IDirect3DIndexBuffer9**)ib, NULL);
@@ -52,7 +54,7 @@ void sdx_CreateIndexBuffer(void* device, int size, void* data, unsigned int mana
     }
 }
 
-void sdx_CreateTextureFromPath(void* device, const char* filepath, void** tex) {
+SDX void sdx_CreateTextureFromPath(void* device, const char* filepath, void** tex) {
     int width, height, channels;
     unsigned char *img = stbi_load(filepath, &width, &height, &channels, 4);
     if (!img) { *tex = NULL; return; }
@@ -78,7 +80,7 @@ void sdx_CreateTextureFromPath(void* device, const char* filepath, void** tex) {
     }   
     stbi_image_free(img);
 }
-void sdx_CreateRenderTargetTexture(void* device, int width, int height, void** tex) {
+SDX void sdx_CreateRenderTargetTexture(void* device, int width, int height, void** tex) {
     ((IDirect3DDevice9*)device)->lpVtbl->CreateTexture(
         ((IDirect3DDevice9*)device),
         width, height, 1, 
@@ -88,7 +90,7 @@ void sdx_CreateRenderTargetTexture(void* device, int width, int height, void** t
         (IDirect3DTexture9**)tex, NULL
     );
 }
-void sdx_CreateVertexDeclaration(void* device, const int* layout, void** decl) {
+SDX void sdx_CreateVertexDeclaration(void* device, const int* layout, void** decl) {
     D3DVERTEXELEMENT9 d3d_elements[32]; // maks 32 yaptım şimdilik
     short offset = 0;
     int i = 0;
@@ -139,14 +141,14 @@ void sdx_CreateVertexDeclaration(void* device, const int* layout, void** decl) {
         (IDirect3DVertexDeclaration9**)decl
     );
 }
-void sdx_CreateVertexShader(void *device, unsigned long *data, void **shader) {
+SDX void sdx_CreateVertexShader(void *device, unsigned long *data, void **shader) {
     HRESULT hr=((IDirect3DDevice9*)device)->lpVtbl->CreateVertexShader((IDirect3DDevice9*)device, data, shader);
     if (FAILED(hr)) {
         printf("BINGO! D3D9 bu Bytecode'u reddetti!\n");
     }
 }
 
-void sdx_CreatePixelShader(void *device, unsigned long *data, void **shader) {
+SDX void sdx_CreatePixelShader(void *device, unsigned long *data, void **shader) {
     HRESULT hr=((IDirect3DDevice9*)device)->lpVtbl->CreatePixelShader((IDirect3DDevice9*)device, data, shader);
     if (FAILED(hr)) {
         printf("BINGO! D3D9 bu Bytecode'u reddetti!\n");
@@ -159,7 +161,7 @@ void sdx_CreatePixelShader(void *device, unsigned long *data, void **shader) {
 //
 //---------------------------------------------------------------------
 
-void sdx_ReleaseArgs(void* first_obj, ...) {
+SDX void sdx_ReleaseArgs(void* first_obj, ...) {
     va_list ap;
     va_start(ap, first_obj);
     for (void* obj = first_obj; obj != NULL; obj = va_arg(ap, void*)) {
@@ -175,7 +177,7 @@ void sdx_ReleaseArgs(void* first_obj, ...) {
 //
 //---------------------------------------------------------------------
 
-void sdx_SetOrtho(void* device, int shader_register, float width, float height) {
+SDX void sdx_SetOrtho(void* device, int shader_register, float width, float height) {
     float mat[16] = {
         2.0f / width,  0.0f,          0.0f, -1.0f,
         0.0f,         -2.0f / height, 0.0f,  1.0f,
@@ -184,51 +186,51 @@ void sdx_SetOrtho(void* device, int shader_register, float width, float height) 
     };
     sdx_SetVertexShaderConstantF(device, shader_register, mat, 4);
 }
-void sdx_SetVertexShaderConstantF(void *device, int start, const float *data, int count) {
+SDX void sdx_SetVertexShaderConstantF(void *device, int start, const float *data, int count) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetVertexShaderConstantF(device, start, data, count);
 }
-void sdx_SetPixelShaderConstantF(void *device, int start, const float *data, int count) {
+SDX void sdx_SetPixelShaderConstantF(void *device, int start, const float *data, int count) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetPixelShaderConstantF(device, start, data, count);
 }
-void sdx_SetViewport(void* device, int x, int y, int width, int height) {
+SDX void sdx_SetViewport(void* device, int x, int y, int width, int height) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetViewport(device, &(D3DVIEWPORT9){x,y,width,height,0,1});
 }
-void sdx_SetScissorRect(void* device, int left, int top, int right, int bottom) {
+SDX void sdx_SetScissorRect(void* device, int left, int top, int right, int bottom) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetScissorRect(device, &(RECT){left, top, right, bottom});
 }
-void sdx_SetRenderState(void *device, unsigned int state, unsigned int value) {
+SDX void sdx_SetRenderState(void *device, unsigned int state, unsigned int value) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetRenderState(device, state, value);
 }
-void sdx_SetRenderTarget(void *device, int index, void *surface) {
+SDX void sdx_SetRenderTarget(void *device, int index, void *surface) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetRenderTarget(device, index, surface);
 }
-void sdx_SetSamplerFilter(void *device, int sampler, int mag, int min, int mip) {
+SDX void sdx_SetSamplerFilter(void *device, int sampler, int mag, int min, int mip) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetSamplerState(device, sampler, D3DSAMP_MAGFILTER, mag);
     ((IDirect3DDevice9*)device)->lpVtbl->SetSamplerState(device, sampler, D3DSAMP_MINFILTER, min);
     ((IDirect3DDevice9*)device)->lpVtbl->SetSamplerState(device, sampler, D3DSAMP_MIPFILTER, mip);
 }
-void sdx_SetTexture(void *device, int stage, void *tex) {
+SDX void sdx_SetTexture(void *device, int stage, void *tex) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetTexture((IDirect3DDevice9*)device, stage, tex);
 }
-void sdx_SetVertexShader(void *device, void *shader) {
+SDX void sdx_SetVertexShader(void *device, void *shader) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetVertexShader((IDirect3DDevice9*)device, shader);
 }
-void sdx_SetPixelShader(void *device, void *shader) {
+SDX void sdx_SetPixelShader(void *device, void *shader) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetPixelShader((IDirect3DDevice9*)device, shader);
 }
-void sdx_SetVertexDeclaration(void *device, void *decl) {
+SDX void sdx_SetVertexDeclaration(void *device, void *decl) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetVertexDeclaration((IDirect3DDevice9*)device, decl);
 }
-void sdx_SetStreamSource(void *device, int stream, void *vbuf, int offset, int stride) {
+SDX void sdx_SetStreamSource(void *device, int stream, void *vbuf, int offset, int stride) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetStreamSource(device, stream, vbuf, offset, stride);
 }
-void sdx_BeginStateBlock(void *device) {
+SDX void sdx_BeginStateBlock(void *device) {
     ((IDirect3DDevice9*)device)->lpVtbl->BeginStateBlock(device);
 }
-void sdx_EndStateBlock(void* device, void** state_block) {
+SDX void sdx_EndStateBlock(void* device, void** state_block) {
     ((IDirect3DDevice9*)device)->lpVtbl->EndStateBlock(device, state_block);
 }
-void sdx_Apply(void* state_block) {
+SDX void sdx_ApplyStateBlock(void* state_block) {
     ((IDirect3DStateBlock9*)state_block)->lpVtbl->Apply(state_block);
 }
 
@@ -238,10 +240,10 @@ void sdx_Apply(void* state_block) {
 //
 //---------------------------------------------------------------------
 
-void sdx_GetRenderTarget(void* device, int index, void** surface) {
+SDX void sdx_GetRenderTarget(void* device, int index, void** surface) {
     ((IDirect3DDevice9*)device)->lpVtbl->GetRenderTarget(device, index, surface);
 }
-void sdx_GetSurfaceLevel(void* texture, int level, void** surface) {
+SDX void sdx_GetSurfaceLevel(void* texture, int level, void** surface) {
     ((IDirect3DTexture9*)texture)->lpVtbl->GetSurfaceLevel(texture, level, surface);
 }
 
@@ -251,7 +253,7 @@ void sdx_GetSurfaceLevel(void* texture, int level, void** surface) {
 //
 //---------------------------------------------------------------------
 
-void sdx_UpdateVertexBuffer(void* vb, int size, int offset, const void* data) {
+SDX void sdx_UpdateVertexBuffer(void* vb, int size, int offset, const void* data) {
     if (!vb || !data) return;
     
     void* pVoid;
@@ -259,7 +261,7 @@ void sdx_UpdateVertexBuffer(void* vb, int size, int offset, const void* data) {
     memcpy(pVoid, data, size);
     ((IDirect3DVertexBuffer9*)vb)->lpVtbl->Unlock(((IDirect3DVertexBuffer9*)vb));
 }
-void sdx_UpdateIndexBuffer(void* ib, int size, int offset, const void* data) {
+SDX void sdx_UpdateIndexBuffer(void* ib, int size, int offset, const void* data) {
     if (!ib || !data) return;
     
     void* pVoid;
@@ -274,21 +276,27 @@ void sdx_UpdateIndexBuffer(void* ib, int size, int offset, const void* data) {
 //
 //---------------------------------------------------------------------
 
-void sdx_ClearTarget(void *device, unsigned int color, float z) {
+SDX void sdx_ClearTarget(void *device, unsigned int color, float z) {
     ((IDirect3DDevice9*)device)->lpVtbl->Clear((IDirect3DDevice9*)device, 0, NULL, D3DCLEAR_TARGET, color, z, 0);
 }
-void sdx_DrawPrimitive(void *device, int type, int start, int count) {
+SDX void sdx_DrawPrimitive(void *device, int type, int start, int count) {
     ((IDirect3DDevice9*)device)->lpVtbl->DrawPrimitive(device, type, start, count);
 }
-void sdx_Present(void* device) {
+SDX void sdx_DrawPrimitiveUP(void *device, int type, int count, void *data, int stride) {
+    ((IDirect3DDevice9*)device)->lpVtbl->DrawPrimitiveUP(device, type, count, data, stride);
+}
+SDX void sdx_Present(void *device) {
     ((IDirect3DDevice9*)device)->lpVtbl->Present(device, NULL, NULL, NULL, NULL);
 }
-void sdx_BeginScene(void *device) {
+SDX void sdx_BeginScene(void *device) {
     ((IDirect3DDevice9*)device)->lpVtbl->BeginScene(device);
 }
-void sdx_EndScene(void *device) {
+SDX void sdx_EndScene(void *device) {
     ((IDirect3DDevice9*)device)->lpVtbl->EndScene(device);
 }
-void sdx_SetFVF(void *device, int FVF) {
+SDX void sdx_SetFVF(void *device, int FVF) {
     ((IDirect3DDevice9*)device)->lpVtbl->SetFVF(device, FVF);
+}
+SDX void sdx_SetTextureStageState(void *device, int stage, int type, int value) {
+    ((IDirect3DDevice9*)device)->lpVtbl->SetTextureStageState(device, stage, type, value);
 }
